@@ -73,8 +73,9 @@ impl Buffer for DummyBuffer {
         let text = self.text.clone();
         let color = self.config.color;
         let scale = self.config.scale;
+        dbg!(bb);
         self.glyph_brush().queue(Section {
-            screen_position: (bb.top, bb.left),
+            screen_position: (bb.left, bb.top),
             bounds: (bb.width, bb.height),
             text: vec![Text::new(&text).with_color(color).with_scale(scale)],
             layout: Layout::Wrap {

@@ -46,8 +46,18 @@ pub async fn run(event_loop: EventLoop<KamiEvent>, window: Window) -> anyhow::Re
         .push(Arc::new(Mutex::new(DummyBuffer::new(FontConfig {
             scale: 20.0,
             color: [0.0, 0.0, 0.0, 1.0],
+            font: font.clone(),
+        }))));
+
+    app_state
+        .buffers
+        .push(Arc::new(Mutex::new(DummyBuffer::new(FontConfig {
+            scale: 40.0,
+            color: [0.0, 0.0, 0.0, 1.0],
             font,
         }))));
+
+    app_state.active_buffer = 1;
 
     let state = Arc::new(RwLock::new(app_state));
 

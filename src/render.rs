@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use crate::app_state::SharedState;
 use crate::{BoundingBox, ViewportDescriptor, WindowData};
 use anyhow::Context;
@@ -113,23 +114,30 @@ async fn redraw_window(
     let size = window_data.viewport.descriptor.window.inner_size();
 
     let state = window_data.state.clone();
-    let buffers = {
+
+    let (buffers, bounding_boxes) = {
         let app_state = state.read().await;
-        app_state.buffers.clone()
+        (
+            app_state.buffers.clone(),
+            app_state.layout.build_bounding_boxes(BoundingBox {
+                left: 0.0,
+                top: 0.0,
+                width: size.width as f32,
+                height: size.height as f32,
+            }),
+        )
     };
 
-    for buffer in &buffers {
-        let mut buffer = buffer.lock().await;
-        buffer.enqueue(BoundingBox {
-            left: 0.0,
-            top: 0.0,
-            width: size.width as f32,
-            height: size.height as f32,
-        });
+    let mut visited = HashSet::new();
+
+    for (bounding_box, buffer_id) in bounding_boxes {
+        let mut buffer = buffers[buffer_id].lock().await;
+        buffer.enqueue(bounding_box);
+        visited.insert(buffer_id);
     }
 
-    for buffer in &buffers {
-        let mut buffer = buffer.lock().await;
+    for buffer_id in visited {
+        let mut buffer = buffers[buffer_id].lock().await;
         buffer.draw_queued(
             device,
             staging_belt,

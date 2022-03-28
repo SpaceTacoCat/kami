@@ -9,7 +9,7 @@ pub type SharedState = Arc<RwLock<AppState>>;
 pub struct AppState {
     pub buffers: Vec<Arc<Mutex<dyn Buffer + Send + Sync + 'static>>>,
     pub active_buffer: usize,
-    layout: Layout,
+    pub layout: Layout,
 }
 
 impl AppState {
