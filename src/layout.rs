@@ -17,10 +17,13 @@ pub struct Frame {
 }
 
 impl Layout {
-    // TODO: Make it normal
+    // TODO: Make it init Singleton
     pub fn new() -> Self {
         Self {
-            root: Split::Horizontal(vec![(Split::Singleton(Frame { buffer_index: 0 }), 0.3), (Split::Singleton(Frame { buffer_index: 1 }), 0.7)]),
+            root: Split::Horizontal(vec![
+                (Split::Singleton(Frame { buffer_index: 0 }), 0.3),
+                (Split::Singleton(Frame { buffer_index: 1 }), 0.7),
+            ]),
         }
     }
 

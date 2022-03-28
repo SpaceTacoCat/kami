@@ -1,7 +1,7 @@
-use std::collections::HashSet;
 use crate::app_state::SharedState;
 use crate::{BoundingBox, ViewportDescriptor, WindowData};
 use anyhow::Context;
+use std::collections::HashSet;
 use std::default::default;
 use tokio::sync::mpsc::Receiver;
 use wgpu::util::StagingBelt;

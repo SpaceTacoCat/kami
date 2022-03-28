@@ -41,6 +41,7 @@ pub async fn run(event_loop: EventLoop<KamiEvent>, window: Window) -> anyhow::Re
 
     let mut app_state = AppState::default();
 
+    // TODO: Make it init just basic buffer
     app_state
         .buffers
         .push(Arc::new(Mutex::new(DummyBuffer::new(FontConfig {
