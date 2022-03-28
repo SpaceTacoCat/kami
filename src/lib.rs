@@ -1,30 +1,32 @@
 #![feature(never_type)]
 #![feature(once_cell)]
 #![feature(default_free_fn)]
+#![feature(let_else)]
 
-use crate::buffer::text_buffer::{AppendOnlyTextBuffer, FontConfig};
-use crate::buffer::BoundingBox;
+use crate::app_state::{AppState, SharedState};
+use crate::buffer::dummy_buffer::{DummyBuffer, FontConfig};
+use crate::buffer::{BoundingBox, Buffer};
 use crate::events::KamiEvent;
+use crate::layout::Layout;
 use crate::render::RenderEvent;
-use crate::state::{AppState, StateEvent};
+use crate::state::StateEvent;
 use std::sync::Arc;
-use std::time::SystemTime;
-use tokio::sync::{mpsc, RwLock};
+use tokio::sync::{mpsc, Mutex, RwLock};
 use viewport::{Viewport, ViewportDescriptor};
 use wgpu::{Color, PresentMode, SurfaceConfiguration, TextureUsages};
+use wgpu_glyph::ab_glyph::FontArc;
 use wgpu_glyph::Section;
-use winit::event::{Event, KeyboardInput, WindowEvent};
+use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::Window;
 
+mod app_state;
 mod buffer;
 mod events;
 mod layout;
 mod render;
 mod state;
 mod viewport;
-
-type SharedState = Arc<RwLock<AppState>>;
 
 pub struct WindowData {
     viewport: Viewport,
@@ -35,9 +37,27 @@ pub async fn run(event_loop: EventLoop<KamiEvent>, window: Window) -> anyhow::Re
     let (render_tx, render_rx) = mpsc::channel(1024);
     let (state_tx, state_rx) = mpsc::channel(1024);
 
-    tokio::spawn(state::state_loop(event_loop.create_proxy(), state_rx));
+    let font = FontArc::try_from_slice(include_bytes!("../resources/FiraCode-Regular.ttf"))?;
+
+    let mut app_state = AppState::default();
+
+    app_state
+        .buffers
+        .push(Arc::new(Mutex::new(DummyBuffer::new(FontConfig {
+            scale: 20.0,
+            color: [0.0, 0.0, 0.0, 1.0],
+            font,
+        }))));
+
+    let state = Arc::new(RwLock::new(app_state));
+
+    tokio::spawn(state::state_loop(
+        event_loop.create_proxy(),
+        state_rx,
+        state.clone(),
+    ));
     tokio::spawn(async {
-        render::render_loop(window, render_rx)
+        render::render_loop(window, render_rx, state)
             .await
             .expect("Render loop failed")
     });
@@ -65,28 +85,33 @@ pub async fn run(event_loop: EventLoop<KamiEvent>, window: Window) -> anyhow::Re
                 ..
             } => *control_flow = ControlFlow::Exit,
             Event::WindowEvent {
-                event:
-                    WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
-                                state,
-                                virtual_keycode,
-                                ..
-                            },
-                        ..
-                    },
+                // Handle text input
+                event: WindowEvent::ReceivedCharacter(c),
                 ..
             } => {
                 let state_tx = state_tx.clone();
-                let time_now = SystemTime::now();
+
+                handle.spawn(async move { state_tx.send(StateEvent::CharInput(c)).await.unwrap() });
+            }
+            Event::WindowEvent {
+                event: WindowEvent::ModifiersChanged(modifiers),
+                ..
+            } => {
+                let state_tx = state_tx.clone();
 
                 handle.spawn(async move {
                     state_tx
-                        .send(StateEvent::KeyEvent(state, virtual_keycode, time_now))
+                        .send(StateEvent::ModifiersChange(modifiers))
                         .await
                         .unwrap()
                 });
             }
+            Event::UserEvent(event) => match event {
+                KamiEvent::RequestRedraw => {
+                    let render_tx = render_tx.clone();
+                    handle.spawn(async move { render_tx.send(RenderEvent::Redraw).await.unwrap() });
+                }
+            },
             _ => {}
         }
     });

@@ -1,19 +1,14 @@
-use crate::{
-    AppState, AppendOnlyTextBuffer, BoundingBox, FontConfig, ViewportDescriptor, WindowData,
-};
+use crate::app_state::SharedState;
+use crate::{BoundingBox, ViewportDescriptor, WindowData};
 use anyhow::Context;
 use std::default::default;
-use std::sync::Arc;
 use tokio::sync::mpsc::Receiver;
-use tokio::sync::RwLock;
 use wgpu::util::StagingBelt;
 use wgpu::{
     Backends, Color, CommandEncoderDescriptor, Device, DeviceDescriptor, Features, Instance,
     Limits, LoadOp, Operations, Queue, RenderPassColorAttachment, RenderPassDescriptor,
     RequestAdapterOptions, TextureViewDescriptor,
 };
-use wgpu_glyph::ab_glyph::FontArc;
-use wgpu_glyph::GlyphBrushBuilder;
 use winit::dpi::PhysicalSize;
 use winit::window::Window;
 
@@ -23,7 +18,11 @@ pub enum RenderEvent {
     Redraw,
 }
 
-pub async fn render_loop(window: Window, mut rx: Receiver<RenderEvent>) -> anyhow::Result<()> {
+pub async fn render_loop(
+    window: Window,
+    mut rx: Receiver<RenderEvent>,
+    state: SharedState,
+) -> anyhow::Result<()> {
     let instance = Instance::new(Backends::all());
     let viewport_desc = ViewportDescriptor::new(
         window,
@@ -55,27 +54,6 @@ pub async fn render_loop(window: Window, mut rx: Receiver<RenderEvent>) -> anyho
         .await
         .context("Failed to create device")?;
 
-    let font = FontArc::try_from_slice(include_bytes!("../resources/FiraCode-Regular.ttf"))?;
-
-    let render_format = viewport_desc
-        .surface
-        .get_preferred_format(&adapter)
-        .context("Can't retrieve preferred surface texture format")?;
-
-    let glyph_brush = GlyphBrushBuilder::using_font(font).build(&device, render_format);
-
-    let mut app_state = AppState::default();
-
-    app_state.buffers.push(Box::new(AppendOnlyTextBuffer::new(
-        FontConfig {
-            scale: 20.0,
-            color: [0.0, 0.0, 0.0, 1.0],
-        },
-        glyph_brush,
-    )));
-
-    let state = Arc::new(RwLock::new(app_state));
-
     let mut window_data = WindowData {
         viewport: viewport_desc
             .build(&adapter, &device)
@@ -85,9 +63,12 @@ pub async fn render_loop(window: Window, mut rx: Receiver<RenderEvent>) -> anyho
 
     let mut staging_belt = StagingBelt::new(1024);
 
-    loop {
-        let event = rx.recv().await.unwrap();
+    for buffer in state.read().await.buffers.iter() {
+        let mut buffer = buffer.lock().await;
+        buffer.init_rendering(&window_data, &device, &adapter)
+    }
 
+    while let Some(event) = rx.recv().await {
         match event {
             RenderEvent::Resize(new_size) => resize_window(&mut window_data, &device, new_size),
             RenderEvent::Redraw => {
@@ -95,6 +76,8 @@ pub async fn render_loop(window: Window, mut rx: Receiver<RenderEvent>) -> anyho
             }
         }
     }
+
+    Ok(())
 }
 
 fn resize_window(window_data: &mut WindowData, device: &Device, new_size: PhysicalSize<u32>) {
@@ -130,8 +113,13 @@ async fn redraw_window(
     let size = window_data.viewport.descriptor.window.inner_size();
 
     let state = window_data.state.clone();
-    let mut app_state = state.write().await;
-    for buffer in app_state.buffers.iter_mut() {
+    let buffers = {
+        let app_state = state.read().await;
+        app_state.buffers.clone()
+    };
+
+    for buffer in &buffers {
+        let mut buffer = buffer.lock().await;
         buffer.enqueue(BoundingBox {
             left: 0.0,
             top: 0.0,
@@ -140,7 +128,8 @@ async fn redraw_window(
         });
     }
 
-    for buffer in app_state.buffers.iter_mut() {
+    for buffer in &buffers {
+        let mut buffer = buffer.lock().await;
         buffer.draw_queued(
             device,
             staging_belt,

@@ -1,8 +1,10 @@
+use crate::WindowData;
 use wgpu::util::StagingBelt;
-use wgpu::{CommandEncoder, Device, TextureView};
+use wgpu::{Adapter, CommandEncoder, Device, TextureView};
 
-pub mod text_buffer;
+pub mod dummy_buffer;
 
+#[derive(Copy, Clone, Debug)]
 pub struct BoundingBox {
     pub left: f32,
     pub top: f32,
@@ -15,11 +17,12 @@ pub enum EventHandlerOutcome {
     None,
 }
 
-pub enum Event {
-    KeyPress(char),
+pub enum BufferEvent {
+    Input(char),
 }
 
 pub trait Buffer {
+    fn init_rendering(&mut self, window_data: &WindowData, device: &Device, adapter: &Adapter);
     fn enqueue(&mut self, bb: BoundingBox);
     fn draw_queued(
         &mut self,
@@ -30,5 +33,5 @@ pub trait Buffer {
         target_width: u32,
         target_height: u32,
     );
-    fn handle_events(&mut self, event: Event) -> EventHandlerOutcome;
+    fn handle_events(&mut self, event: BufferEvent) -> EventHandlerOutcome;
 }
