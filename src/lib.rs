@@ -3,6 +3,8 @@
 #![feature(default_free_fn)]
 #![feature(let_else)]
 
+extern crate core;
+
 use crate::app_state::{AppState, SharedState};
 use crate::buffer::dummy_buffer::{DummyBuffer, FontConfig};
 use crate::buffer::{BoundingBox, Buffer};
